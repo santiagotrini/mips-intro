@@ -83,8 +83,96 @@ Aclaración importante, `li` y `la` no son instrucciones reales de MIPS32. Son p
 
 ### System calls
 
-Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+La otra instrucción que aparece es `syscall` que sirve para pedirle alguna operación o servicio al sistema operativo. Antes de usar `syscall` tenemos que cargar un código numérico en el registro `$v0` y en algunos casos poner un valor en `$a0` como argumento. La siguiente tabla resume los códigos más comunes que vamos a utilizar.
+
+|Código|Servicio|Argumentos|Resultado
+|----|---------------|-------------------------------|--------------------|
+|1   |`print int`    |valor en `$a0`                 |                    |
+|4   |`print string` |dirección del _string_ en `$a0`|                    |
+|5   |`read int`     |                               |valor leído en `$v0`|
+|10  |`exit`         |                               |                    |
+
+En el programa de arriba usamos el código 4 para imprimir "Hello world" a la consola y el código 10 para terminar el programa.
+
+### Registros
+
+Los símbolos que empiezan con el signo `$` en el programa son registros. Hay 32 registros enteros en MIPS numerados del 0 al 31. El registro 0 siempre vale cero. Los registros reciben nombres por el uso que se les da convencionalmente aunque en realidad excepto por el registro `zero` todos los registros son de propósito general, es decir podemos usarlos al programar. El contador de programa no está incluído en esta lista de 32 registros.
+
+|Nombre  |Número         |Uso                           |
+|--------|---------------|------------------------------|
+|zero    |0              |Constante 0                   |
+|at      |1              |Reservado para el ensamblador |
+|v0 - v1 |2 - 3          |Resultados de funciones       |
+|a1 - a3 |4 - 7          |Argumentos de funciones       |
+|t0 - t9 |8 - 15, 24, 25 |Registros temporarios         |
+|s0 - t7 |16 - 23        |Registros guardados           |
+|k0 - k1 |26 - 27        |Registros del _kernel_        |
+|gp      |28             |_Global pointer_              |
+|sp      |29             |_Stack pointer_               |
+|fp      |30             |_Frame pointer_               |
+|ra      |31             |_Return address_              |
+
+A medida que avancemos con los ejemplos de MIPS vamos a ver el uso que se le da a cada registro o grupo de registros.
 
 ## Otro ejemplo
 
-Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Como segundo ejemplo tenemos un programa que suma dos números de la memoria y muestra el resultado en la consola.
+
+```
+.data
+numbers: .word 32, 68          # reservo dos words y le doy valores
+
+.text
+.globl main
+main:
+  la        $t0, numbers       # guardo en $t0 la direccion de numbers
+  lw        $t1, 0($t0)        # guardo en $t1 el 32
+  lw        $t2, 4($t0)        # guardo en $t2 el 68
+  add       $t1, $t1, $t2      # sumo $t1 = $t1 + $t2
+  li        $v0, 1             # syscall print_int code
+  move      $a0, $t1           # muevo el resultado ($t1) a $a0 para la syscall
+  syscall                      # print_int syscall
+  li        $v0, 10            # syscall exit code
+  syscall                      # exit syscall
+```
+
+Lo primero que vemos es una etiqueta `numbers:` y la directiva `.word`. Esta directiva indica que lo que sigue es una palabra o _memory word_. En MIPS32 una palabra son 32 bits o 4 bytes. Así que a partir de la dirección a la que apunta `numbers:` tenemos 8 bytes. Los primeros 4 bytes representan el número 32 y los próximos 4 bytes el número 68, porque los números enteros son representados con 32 bits.
+
+Luego en `main:` tenemos que cargar esos números en dos registros: `$t1` y `$t2` porque MIPS es una arquitectura del tipo _load_/_store_, es decir que la ALU solo opera con valores en los registros, nunca directamente con la memoria. El uso de `lw` (_load word_) en MIPS requiere primero el registro donde vamos a guardar la palabra de memoria y un registro base (un puntero a una dirección de memoria). El segundo argumento de `lw`, la parte de `0($t0)` indica el registro base y un _offset_. El primer _load word_ carga en `$t1` los 4 bytes a partir de la dirección contenida en `$t0` que es la misma que la de `numbers:` más 0 bytes. En el segundo _load word_ necesitamos los próximos 4 bytes, por eso escribimos `4($t0)`. O sea lo que valga `$t0` más 4.
+
+La instrucción `add` realiza la suma aritmética del segundo y el tercer registro y guarda el resultado en el primero. Por último usamos `syscall` con código 1 para imprimir un entero en la consola. Además de cargar el 1 en `$v0` tenemos que cargar el número a imprimir en `$a0`, lo podemos hacer copiando el valor de `$t1` a `$a0` usando la pseudoinstrucción `move`.
+
+## Último ejemplo
+
+¿Y si queremos que los dos números a sumar los ingrese el usuario? Bueno el último ejemplo hace exactamente eso.
+
+```
+.data
+prompt: .asciiz "Ingrese un numero\n"  # prompt string
+msg:    .asciiz "La suma es "          # msg string
+
+.text
+.globl main
+main:
+  li        $v0, 4             # syscall print_string code
+  la        $a0, prompt        # cargo la direccion del string en a0
+  syscall                      # imprimo el prompt
+  li        $v0, 5             # syscall read_int code
+  syscall                      # leo el primer numero
+  move      $t1, $v0           # muevo el resultado de la syscall a t1
+  li        $v0, 4             # syscall print_string code
+  la        $a0, prompt        # cargo la direccion del string en a0
+  syscall                      # imprimo el prompt
+  li        $v0, 5             # syscall read_int code
+  syscall                      # leo el segundo numero
+  move      $t2, $v0           # muevo el resultado de la syscall a t2
+  add       $t3, $t1, $t2      # sumo los dos números y pongo el resultado en t3
+  li        $v0, 4             # syscall print_string code
+  la        $a0, msg           # cargo la direccion del string en a0
+  syscall                      # imprimo el mensaje
+  li        $v0, 1             # syscall print_int code
+  move      $a0, $t3           # muevo el resultado ($t3) a $a0 para la syscall
+  syscall                      # print_int syscall
+  li        $v0, 10            # syscall exit code
+  syscall                      # exit syscall
+```
